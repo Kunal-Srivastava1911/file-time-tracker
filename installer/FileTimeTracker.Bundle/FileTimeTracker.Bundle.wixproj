@@ -1,0 +1,24 @@
+<Project Sdk="WixToolset.Sdk/4.0.5">
+
+  <PropertyGroup>
+    <OutputName>FileTimeTrackerSetup</OutputName>
+    <OutputType>Bundle</OutputType>
+
+    <ArtifactsRoot Condition="'$(ArtifactsRoot)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\</ArtifactsRoot>
+    <RuntimeUrl Condition="'$(RuntimeUrl)' == ''">https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.11/windowsdesktop-runtime-8.0.11-win-x64.exe</RuntimeUrl>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DefineConstants>
+      MsiPath=$(ArtifactsRoot)msi\FileTimeTracker.msi;
+      RuntimeExe=$(ArtifactsRoot)prereq\windowsdesktop-runtime-8.0.11-win-x64.exe;
+      RuntimeUrl=$(RuntimeUrl)
+    </DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Bal.wixext" Version="4.0.5" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="4.0.5" />
+  </ItemGroup>
+
+</Project>

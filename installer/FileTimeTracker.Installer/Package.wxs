@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!--
+    design.md §6: per-machine MSI requiring admin (UAC). Installs the agent and watchdog, writes
+    the machine config and the DPAPI-encrypted Dropbox token, registers the two scheduled tasks,
+    and adds the documented Defender exclusion.
+
+    Silent install (§6):
+      msiexec /i FileTimeTracker.msi /quiet COMPUTERNO=PC-014 ^
+              DROPBOXAPPKEY=abc DROPBOXREFRESHTOKEN=xyz
+  -->
+  <Package Name="Employee File-Time Tracker"
+           Manufacturer="Cresco"
+           Version="1.0.0.0"
+           UpgradeCode="8f1c4d2e-6b7a-4f31-9c5d-2a7e6b40c913"
+           Scope="perMachine"
+           Compressed="yes"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="Employee File-Time Tracker agent and watchdog" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- §2: listed under installed programs; no attempt to hide the entry. -->
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPHELPLINK" Value="https://example.internal/file-time-tracker" />
+
+    <Launch Condition="Installed OR COMPUTERNO&lt;&gt;&quot;&quot;"
+            Message="A Computer No. is required. Enter one on the previous page, or pass COMPUTERNO=&lt;no&gt; on the command line for a silent install." />
+
+    <!-- ==== Properties ==================================================================== -->
+
+    <!-- Stamped on every row (§6). -->
+    <Property Id="COMPUTERNO" Secure="yes" />
+
+    <!-- Dropbox app-folder credentials (§4.3). Hidden so the token is redacted in MSI logs. -->
+    <Property Id="DROPBOXAPPKEY" Secure="yes" />
+    <Property Id="DROPBOXAPPSECRET" Secure="yes" Hidden="yes" />
+    <Property Id="DROPBOXREFRESHTOKEN" Secure="yes" Hidden="yes" />
+
+    <!-- Must match across the fleet or hashed documents stop grouping (§4.4). -->
+    <Property Id="HASHSALT" Secure="yes" Hidden="yes" />
+
+    <Property Id="CONFIGPATH" Secure="yes" Value="/config.json" />
+    <Property Id="TIMEZONEID" Secure="yes" Value="India Standard Time" />
+    <Property Id="WATCHDOGMINUTES" Secure="yes" Value="5" />
+
+    <!-- Set to 0 to skip the §6 Defender exclusion, e.g. once the agent is code-signed. -->
+    <Property Id="DEFENDEREXCLUSION" Secure="yes" Value="1" />
+
+    <!-- ==== Layout ======================================================================== -->
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="FileTimeTracker" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DATAROOT" Name="FileTimeTracker">
+        <Directory Id="DATAWORK" Name="data" />
+      </Directory>
+    </StandardDirectory>
+
+    <Icon Id="AppIcon" SourceFile="$(AgentExe)" />
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="AgentExe" Guid="*">
+        <File Id="FileAgentExe" Source="$(AgentExe)" KeyPath="yes" />
+      </Component>
+
+      <Component Id="WatchdogExe" Guid="*">
+        <File Id="FileWatchdogExe" Source="$(WatchdogExe)" KeyPath="yes" />
+      </Component>
+
+      <Component Id="NoticeDoc" Guid="*">
+        <File Id="FileNotice" Source="$(NoticeFile)" Name="MONITORING-NOTICE.md" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!--
+      Data tiers, per §2/§4.3. The root is administrators-write so an employee cannot repoint the
+      upload destination or tamper with the credential blob; the work folder is user-writable
+      because the agent runs as the logged-on employee and must be able to buffer intervals.
+    -->
+    <ComponentGroup Id="DataFolders">
+      <Component Id="DataRoot" Directory="DATAROOT" Guid="a1d6f0b7-3c25-4f8e-9b41-5d0c8e2a7f16">
+        <CreateFolder>
+          <util:PermissionEx User="Users" GenericRead="yes" GenericExecute="yes" />
+          <util:PermissionEx User="Administrators" GenericAll="yes" />
+        </CreateFolder>
+
+        <!-- A decommissioned laptop must not keep a usable refresh token. -->
+        <RemoveFile Id="RemoveCredentials" Name="dropbox.dat" On="uninstall" />
+        <RemoveFile Id="RemoveMachineSettings" Name="machine.json" On="uninstall" />
+      </Component>
+
+      <Component Id="DataWork" Directory="DATAWORK" Guid="c4b9e1a8-70d3-4a62-8f19-6e5b3d90c247">
+        <CreateFolder>
+          <util:PermissionEx User="Users" GenericRead="yes" GenericWrite="yes" GenericExecute="yes" />
+          <util:PermissionEx User="Administrators" GenericAll="yes" />
+        </CreateFolder>
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="File-Time Tracker" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="DataFolders" />
+    </Feature>
+
+    <!-- ==== Custom actions =============================================================== -->
+    <!--
+      All deferred actions run non-impersonated (as SYSTEM) because they write to Program Files
+      and ProgramData and touch the machine's task store. The DPAPI blob is written at
+      LocalMachine scope precisely so a SYSTEM-written token stays readable by the employee's
+      agent process.
+    -->
+
+    <!--
+      Provisioning is split into identity and credentials as two actions. MSI caps a custom
+      action's Target at 255 characters and one combined command line exceeds it; splitting also
+      keeps each step doing one thing. The 'provision' verb merges into existing settings, so the
+      second call preserves what the first wrote.
+    -->
+    <SetProperty Id="ProvisionMachine"
+                 Sequence="execute"
+                 Before="ProvisionMachine"
+                 Value="&quot;[INSTALLFOLDER]FileTimeTracker.Agent.exe&quot; provision --computer-no &quot;[COMPUTERNO]&quot; --config-path &quot;[CONFIGPATH]&quot; --time-zone &quot;[TIMEZONEID]&quot; --hash-salt &quot;[HASHSALT]&quot;" />
+
+    <CustomAction Id="ProvisionMachine"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <SetProperty Id="ProvisionCredentials"
+                 Sequence="execute"
+                 Before="ProvisionCredentials"
+                 Value="&quot;[INSTALLFOLDER]FileTimeTracker.Agent.exe&quot; provision --computer-no &quot;[COMPUTERNO]&quot; --app-key &quot;[DROPBOXAPPKEY]&quot; --app-secret &quot;[DROPBOXAPPSECRET]&quot; --refresh-token &quot;[DROPBOXREFRESHTOKEN]&quot;" />
+
+    <CustomAction Id="ProvisionCredentials"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <SetProperty Id="InstallTasks"
+                 Sequence="execute"
+                 Before="InstallTasks"
+                 Value="&quot;[INSTALLFOLDER]FileTimeTracker.Agent.exe&quot; install-tasks --install-folder &quot;[INSTALLFOLDER]&quot; --watchdog-minutes [WATCHDOGMINUTES]" />
+
+    <CustomAction Id="InstallTasks"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <SetProperty Id="AddDefenderExclusion"
+                 Sequence="execute"
+                 Before="AddDefenderExclusion"
+                 Value="&quot;[INSTALLFOLDER]FileTimeTracker.Agent.exe&quot; defender-exclusion --path &quot;[INSTALLFOLDER]&quot;" />
+
+    <CustomAction Id="AddDefenderExclusion"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Uninstall: paths are resolved before the files are removed. -->
+
+    <SetProperty Id="UninstallTasks"
+                 Sequence="execute"
+                 Before="UninstallTasks"
+                 Value="&quot;[INSTALLFOLDER]FileTimeTracker.Agent.exe&quot; uninstall-tasks" />
+
+    <CustomAction Id="UninstallTasks"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <SetProperty Id="RemoveDefenderExclusion"
+                 Sequence="execute"
+                 Before="RemoveDefenderExclusion"
+                 Value="&quot;[INSTALLFOLDER]FileTimeTracker.Agent.exe&quot; defender-exclusion --remove --path &quot;[INSTALLFOLDER]&quot;" />
+
+    <CustomAction Id="RemoveDefenderExclusion"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- The agent holds its SQLite buffer open, so stop it before replacing the binary. -->
+    <util:CloseApplication Id="CloseAgent" Target="FileTimeTracker.Agent.exe" CloseMessage="no" EndSessionMessage="no" RebootPrompt="no" />
+    <util:CloseApplication Id="CloseWatchdog" Target="FileTimeTracker.Watchdog.exe" CloseMessage="no" EndSessionMessage="no" RebootPrompt="no" />
+
+    <InstallExecuteSequence>
+      <!-- Remove tasks first so the watchdog cannot restart the agent mid-uninstall. -->
+      <Custom Action="UninstallTasks" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
+      <Custom Action="RemoveDefenderExclusion" After="UninstallTasks" Condition="REMOVE=&quot;ALL&quot;" />
+
+      <Custom Action="ProvisionMachine" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="ProvisionCredentials" After="ProvisionMachine"
+              Condition="NOT REMOVE AND DROPBOXAPPKEY&lt;&gt;&quot;&quot; AND DROPBOXREFRESHTOKEN&lt;&gt;&quot;&quot;" />
+      <Custom Action="AddDefenderExclusion" After="ProvisionCredentials" Condition="NOT REMOVE AND DEFENDEREXCLUSION=&quot;1&quot;" />
+      <Custom Action="InstallTasks" After="AddDefenderExclusion" Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+
+    <UIRef Id="TrackerSetupUI" />
+
+  </Package>
+</Wix>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- WinExe so the every-few-minutes scheduled task never flashes a console at the employee. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>FileTimeTracker.Watchdog</RootNamespace>
+    <AssemblyName>FileTimeTracker.Watchdog</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileTimeTracker.Core\FileTimeTracker.Core.csproj" />
+  </ItemGroup>
+
+</Project>

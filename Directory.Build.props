@@ -1,0 +1,28 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <!--
+      Required, not incidental: the reporting day and the quarter boundary are resolved with
+      TimeZoneInfo.FindSystemTimeZoneById (e.g. "India Standard Time"), which throws under
+      invariant globalization.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!--
+      Framework-dependent everywhere: the setup bundle chains the .NET 8 Desktop Runtime once per
+      machine rather than carrying it in every executable. Stated here rather than only on the
+      build.ps1 publish calls because an executable project that referenced another would otherwise
+      be treated as self-contained and fail to compose (NETSDK1151).
+    -->
+    <SelfContained>false</SelfContained>
+    <Product>Employee File-Time Tracker</Product>
+    <Company>Cresco</Company>
+    <Version>1.0.0</Version>
+    <Copyright>Copyright (c) Cresco</Copyright>
+  </PropertyGroup>
+
+</Project>

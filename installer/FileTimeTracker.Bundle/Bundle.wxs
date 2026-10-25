@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!--
+    §6 allows "MSI (WiX) or a single installer .exe". Both are built:
+
+      FileTimeTracker.msi        the interactive installer. Its own UI prompts for the Computer No.
+                                 (§6). Requires the .NET 8 Desktop Runtime to already be present.
+
+      FileTimeTrackerSetup.exe   this bundle. Chains the runtime and then the MSI, and is the
+                                 parameter-driven path for a silent or RMM push (§6).
+
+    Burn always drives a chained MSI with its own bootstrapper UI - WiX v4 removed
+    MsiPackage/@DisplayInternalUI with no replacement - so the MSI's Computer No. dialog cannot
+    appear from inside the bundle. Hence the split: the bundle takes the value on its command line,
+    and an admin who wants to be prompted runs the MSI. See docs/DEPLOYMENT.md.
+
+      FileTimeTrackerSetup.exe -quiet ComputerNo=PC-014 DropboxAppKey=abc DropboxRefreshToken=xyz
+  -->
+  <Bundle Name="Employee File-Time Tracker"
+          Manufacturer="Cresco"
+          Version="1.0.0.0"
+          UpgradeCode="3d7b1a94-52c8-4e06-b1f7-9a2c05d8e364"><!--
+    No IconSourceFile: a Burn bundle needs a real .ico, and there is no branded artwork to point
+    it at. Add one here when there is. (The MSI does carry an icon, extracted from the agent.)
+  -->
+
+    <BootstrapperApplication>
+      <!-- LicenseUrl empty: internal software, governed by the employment policy, no EULA page. -->
+      <bal:WixStandardBootstrapperApplication Theme="hyperlinkLicense" LicenseUrl="" SuppressOptionsUI="yes" />
+    </BootstrapperApplication>
+
+    <!-- 64-bit Windows 10 or later, matching the fleet in §1. -->
+    <bal:Condition Condition="VersionNT &gt;= v10.0 AND VersionNT64"
+                   Message="This software requires 64-bit Windows 10 or later." />
+
+    <!--
+      Detection reads the version the shared framework records for itself. Comparing against
+      v8.0.0 means a machine that already has 8.0.x - or a later 8 servicing update - is left
+      alone instead of being handed a redundant 60 MB install.
+    -->
+    <util:RegistrySearch Id="DesktopRuntimeVersion"
+                         Variable="DesktopRuntimeVersion"
+                         Root="HKLM"
+                         Key="SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App"
+                         Value="Version"
+                         Result="value"
+                         Bitness="always64" />
+
+    <Chain>
+      <ExePackage Id="NetCoreDesktopRuntime"
+                  DisplayName=".NET Desktop Runtime 8 (x64)"
+                  Permanent="yes"
+                  Vital="yes"
+                  PerMachine="yes"
+                  DetectCondition="DesktopRuntimeVersion &gt;= v8.0.0"
+                  InstallArguments="/install /quiet /norestart"
+                  RepairArguments="/repair /quiet /norestart"
+                  UninstallArguments="/uninstall /quiet /norestart">
+        <!--
+          SourceFile lets WiX compute the payload hash and size from the real installer instead of
+          trusting a hand-copied digest; Compressed="no" plus DownloadUrl keeps the setup .exe small
+          by fetching the runtime at install time, and only on machines that actually need it.
+        -->
+        <ExePackagePayload SourceFile="$(RuntimeExe)"
+                           Name="windowsdesktop-runtime-8-win-x64.exe"
+                           DownloadUrl="$(RuntimeUrl)"
+                           Compressed="no" />
+      </ExePackage>
+
+      <MsiPackage Id="TrackerMsi"
+                  SourceFile="$(MsiPath)"
+                  Vital="yes">
+        <!--
+          Burn does not forward arbitrary command-line variables into an MsiPackage, so every
+          property the silent install needs is mapped explicitly.
+        -->
+        <MsiProperty Name="COMPUTERNO" Value="[ComputerNo]" />
+        <MsiProperty Name="DROPBOXAPPKEY" Value="[DropboxAppKey]" />
+        <MsiProperty Name="DROPBOXAPPSECRET" Value="[DropboxAppSecret]" />
+        <MsiProperty Name="DROPBOXREFRESHTOKEN" Value="[DropboxRefreshToken]" />
+        <MsiProperty Name="HASHSALT" Value="[HashSalt]" />
+        <MsiProperty Name="CONFIGPATH" Value="[ConfigPath]" />
+        <MsiProperty Name="TIMEZONEID" Value="[TimeZoneId]" />
+        <MsiProperty Name="WATCHDOGMINUTES" Value="[WatchdogMinutes]" />
+        <MsiProperty Name="DEFENDEREXCLUSION" Value="[DefenderExclusion]" />
+      </MsiPackage>
+    </Chain>
+
+    <!-- Hidden: secrets must not be written to the Burn log. -->
+    <Variable Name="ComputerNo" bal:Overridable="yes" Value="" />
+    <Variable Name="DropboxAppKey" bal:Overridable="yes" Value="" />
+    <Variable Name="DropboxAppSecret" bal:Overridable="yes" Value="" Hidden="yes" />
+    <Variable Name="DropboxRefreshToken" bal:Overridable="yes" Value="" Hidden="yes" />
+    <Variable Name="HashSalt" bal:Overridable="yes" Value="" Hidden="yes" />
+    <Variable Name="ConfigPath" bal:Overridable="yes" Value="/config.json" />
+    <Variable Name="TimeZoneId" bal:Overridable="yes" Value="India Standard Time" />
+    <Variable Name="WatchdogMinutes" bal:Overridable="yes" Value="5" />
+    <Variable Name="DefenderExclusion" bal:Overridable="yes" Value="1" />
+  </Bundle>
+</Wix>

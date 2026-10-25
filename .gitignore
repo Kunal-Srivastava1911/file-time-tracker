@@ -1,0 +1,10 @@
+bin/
+obj/
+
+# Build output. artifacts/prereq holds the cached .NET runtime installer (~60 MB) that Burn needs
+# locally to compute its payload hash; build.ps1 re-downloads it if missing.
+artifacts/
+
+*.user
+*.suo
+.vs/

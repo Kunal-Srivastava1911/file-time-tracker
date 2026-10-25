@@ -1,0 +1,25 @@
+<Project Sdk="WixToolset.Sdk/4.0.5">
+
+  <PropertyGroup>
+    <OutputName>FileTimeTracker</OutputName>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+
+    <!-- Published single-file binaries; see build.ps1, which publishes before building this. -->
+    <PublishRoot Condition="'$(PublishRoot)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\publish\</PublishRoot>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DefineConstants>
+      AgentExe=$(PublishRoot)agent\FileTimeTracker.Agent.exe;
+      WatchdogExe=$(PublishRoot)watchdog\FileTimeTracker.Watchdog.exe;
+      NoticeFile=$(MSBuildThisFileDirectory)..\..\docs\MONITORING-NOTICE.md
+    </DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="4.0.5" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="4.0.5" />
+  </ItemGroup>
+
+</Project>

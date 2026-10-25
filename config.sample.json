@@ -1,0 +1,24 @@
+{
+  "sample_interval_sec": 10,
+  "upload_interval_sec": 300,
+  "idle_threshold_sec": 300,
+  "config_poll_sec": 900,
+
+  "capture_window_title": true,
+  "capture_file_path": true,
+  "hash_sensitive_fields": false,
+
+  "logs_path": "/logs",
+  "master_workbook_path": "/TimeLog_Current.xlsx",
+  "archive_path": "/archive",
+  "archive_grace_days": 30,
+
+  "show_first_run_notice": false,
+  "excluded_processes": [],
+
+  "computer_employee_map": {
+    "PC-014": "Asha Nair",
+    "PC-020": "Ravi Kumar",
+    "PC-021": ""
+  }
+}

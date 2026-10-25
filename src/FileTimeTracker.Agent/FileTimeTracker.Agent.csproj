@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>FileTimeTracker.Agent</RootNamespace>
+    <AssemblyName>FileTimeTracker.Agent</AssemblyName>
+    <!-- System.Windows.Automation for best-effort path resolution (design.md §4.1). -->
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- §2: no stealth. The agent is a normal, visible, per-user process. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UseWPF substitutes a WPF-specific implicit-usings set that drops System.IO. -->
+    <Using Include="System.IO" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.Linq" />
+    <Using Include="System.Threading" />
+    <Using Include="System.Threading.Tasks" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileTimeTracker.Core\FileTimeTracker.Core.csproj" />
+  </ItemGroup>
+
+</Project>

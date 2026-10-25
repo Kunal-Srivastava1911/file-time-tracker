@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The click-to-start desktop front end. Same engine as the fleet agent (AgentHost) and the same
+    reporting code (AggregationRunner); only the way it is started and stopped is different.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyTitle>File-Time Tracker</AssemblyTitle>
+    <RootNamespace>FileTimeTracker.Tray</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileTimeTracker.Core\FileTimeTracker.Core.csproj" />
+    <ProjectReference Include="..\FileTimeTracker.Agent\FileTimeTracker.Agent.csproj" />
+    <ProjectReference Include="..\FileTimeTracker.Aggregator\FileTimeTracker.Aggregator.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <!--
+    design.md §6: the installer prompts for the Computer No. that is stamped on every row, and
+    collects the Dropbox credentials the agent needs.
+
+    This is a hand-authored dialog set rather than a stock WixUI one with an extra dialog bolted
+    on. MSI ends a dialog at the first NewDialog control event, so republishing over a built-in
+    set's navigation does not reliably insert a page; composing the sequence here is deterministic.
+
+    Flow: Welcome -> InstallDir -> TrackerConfig -> VerifyReady -> Progress -> Exit
+    There is no EULA page: this is internal software governed by the employment policy, not a
+    click-through licence.
+  -->
+  <Fragment>
+    <UI Id="TrackerSetupUI">
+      <!--
+        The stock dialogs reference these three styles by name, and a hand-composed set does not
+        inherit them from any built-in dialog set, so they are declared here. Values match the
+        WixUI defaults so the pages look like every other Windows installer.
+      -->
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="DiskCostDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <!-- ==== The extra page ============================================================= -->
+
+      <Dialog Id="TrackerConfigDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="250" Height="15" Transparent="yes" NoPrefix="yes"
+                 Text="{\WixUI_Font_Title}Machine and destination" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes"
+                 Text="Identify this laptop and point it at the company Dropbox app folder." />
+
+        <Control Id="ComputerNoLabel" Type="Text" X="20" Y="60" Width="120" Height="10" NoPrefix="yes"
+                 Text="Computer No. (required):" />
+        <Control Id="ComputerNoEdit" Type="Edit" X="20" Y="72" Width="150" Height="18" Property="COMPUTERNO" />
+        <Control Id="ComputerNoHint" Type="Text" X="180" Y="75" Width="170" Height="24" NoPrefix="yes"
+                 Text="Stamped on every row, e.g. PC-014. Map it to an employee in config.json." />
+
+        <Control Id="AppKeyLabel" Type="Text" X="20" Y="102" Width="120" Height="10" NoPrefix="yes"
+                 Text="Dropbox app key:" />
+        <Control Id="AppKeyEdit" Type="Edit" X="20" Y="114" Width="330" Height="18" Property="DROPBOXAPPKEY" />
+
+        <Control Id="TokenLabel" Type="Text" X="20" Y="138" Width="180" Height="10" NoPrefix="yes"
+                 Text="Dropbox refresh token:" />
+        <Control Id="TokenEdit" Type="Edit" X="20" Y="150" Width="330" Height="18" Property="DROPBOXREFRESHTOKEN" Password="yes" />
+
+        <Control Id="TimeZoneLabel" Type="Text" X="20" Y="174" Width="150" Height="10" NoPrefix="yes"
+                 Text="Reporting time zone:" />
+        <Control Id="TimeZoneEdit" Type="Edit" X="20" Y="186" Width="150" Height="18" Property="TIMEZONEID" />
+
+        <Control Id="DefenderCheck" Type="CheckBox" X="20" Y="212" Width="330" Height="14"
+                 Property="DEFENDEREXCLUSION" CheckBoxValue="1" Text="Add a Microsoft Defender exclusion for the install folder" />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="InstallDirDlg" />
+        </Control>
+
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Condition="COMPUTERNO&lt;&gt;&quot;&quot;" />
+          <Publish Event="SpawnDialog" Value="ComputerNoRequiredDlg" Condition="COMPUTERNO=&quot;&quot;" />
+        </Control>
+
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="ComputerNoRequiredDlg" Width="260" Height="85" Title="[ProductName] Setup" NoMinimize="yes">
+        <Control Id="Text" Type="Text" X="15" Y="15" Width="230" Height="35" NoPrefix="yes"
+                 Text="A Computer No. is required. Every recorded row is attributed to it, so setup cannot continue without one." />
+        <Control Id="Return" Type="PushButton" X="100" Y="57" Width="56" Height="17" Default="yes" Cancel="yes" Text="!(loc.WixUIOK)">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+
+      <!-- ==== Navigation ================================================================= -->
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
+
+      <!--
+        No WixUIValidatePath step here. That custom action ships inside the stock dialog sets, and
+        this set does not pull one in; MSI validates the target path during CostFinalize regardless,
+        and the folder is almost always left at its default for a fleet install.
+      -->
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="TrackerConfigDlg" Order="2" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="TrackerConfigDlg" Order="1"
+               Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2"
+               Condition="Installed AND NOT PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="3"
+               Condition="Installed AND PATCH" />
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+    </UI>
+  </Fragment>
+</Wix>
